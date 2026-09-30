@@ -16,7 +16,7 @@ export class SubmitError extends Error {
 
 const TIMEOUT_MS = 12000;
 
-export async function submitCarbon(sessionId, { city, mode, subtype, occupancy, hotelNights, roomOccupancy, distanceKm }) {
+export async function submitCarbon(sessionId, { city, mode, subtype, occupancy, hotelNights, roomOccupancy, distanceKm, lastMile }) {
   const { supabase } = await import('./supabase.js');
   if (!supabase) throw new SubmitError('not_configured');
   const ctrl = new AbortController();
@@ -27,6 +27,9 @@ export async function submitCarbon(sessionId, { city, mode, subtype, occupancy, 
         p_session_id: sessionId, p_city: city, p_mode: mode, p_subtype: subtype,
         p_occupancy: occupancy, p_hotel_nights: hotelNights, p_room_occupancy: roomOccupancy,
         p_distance_km: distanceKm ?? null,
+        p_last_mode: lastMile?.mode ?? null,
+        p_last_distance_km: lastMile?.km ?? null,
+        p_last_occupancy: lastMile?.occupancy ?? 1,
       })
       .abortSignal(ctrl.signal);
     if (error) throw new SubmitError(/submissions_closed/.test(error.message) ? 'submissions_closed' : 'rejected', error);
@@ -42,4 +45,17 @@ export async function submitCarbon(sessionId, { city, mode, subtype, occupancy, 
 export function saveErrorMessage(code) {
   if (code === 'submissions_closed') return 'Bu form şu anda yeni yanıt kabul etmiyor. Hesabınız tamamlandı ancak sonuç sunucuya kaydedilmedi.';
   return 'Hesabınız tamamlandı ancak sonuç sunucuya kaydedilemedi.';
+}
+
+// Genel canlı sayaç (yalnızca toplam sayılar). Kapalıysa veya erişilemezse null döner; sessizce gizlenir.
+export async function fetchCounter() {
+  try {
+    const { supabase } = await import('./supabase.js');
+    if (!supabase) return null;
+    const { data, error } = await supabase.rpc('public_counter');
+    if (error || !data?.enabled) return null;
+    return data;
+  } catch {
+    return null;
+  }
 }

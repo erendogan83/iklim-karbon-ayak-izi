@@ -35,6 +35,8 @@ function buildReport(s) {
     ['Konaklama kaynaklı (ölçülen)', Number(s.measured.accommodation_kg)],
     ['Konaklama yapan katılımcı', s.measured.hotel_guests],
     ['Toplam konaklama gecesi', s.measured.hotel_nights],
+    ['Son kilometre ulaşımı kullanan katılımcı', s.measured.last_mile_users],
+    ['Son kilometre ulaşımı emisyonu (kg CO2e)', Number(s.measured.last_mile_kg)],
     ['1 fide katsayısı (kg CO2e)', s.trees ? Number(s.trees.kg_per_tree) : ''],
     ['Dikilecek fide (tahmini etkinlik toplamına göre)', s.trees ? Number(s.trees.event_estimated) : ''],
     ['Dikilecek fide (katılımcı bazlı yuvarlamayla, yalnızca yanıt verenler)', s.trees ? Number(s.trees.participants_individual) : ''],
@@ -42,6 +44,10 @@ function buildReport(s) {
     ['ULAŞIM TÜRÜ DAĞILIMI'],
     ['Ulaşım türü', 'Katılımcı', 'Toplam kg CO2e', 'Ulaşım kg CO2e'],
     ...s.by_mode.map((m) => [m.mode, m.count, Number(m.total_kg), Number(m.transport_kg)]),
+    [],
+    ['İL BAZLI DAĞILIM'],
+    ['İl', 'Katılımcı', 'Toplam kg CO2e'],
+    ...s.by_city.map((c) => [c.city, c.count, Number(c.total_kg)]),
     [],
     ['OPERASYON GİRDİLERİ'],
     ['Kalem', 'Miktar', 'Birim', 'Faktör', 'kg CO2e'],
@@ -88,6 +94,38 @@ function Login() {
   );
 }
 
+// İl bazlı dağılım: yatay çubuk grafik (katılımcı sayısı veya emisyon).
+function CityChart({ rows }) {
+  const [metric, setMetric] = useState('count');
+  const [all, setAll] = useState(false);
+  if (rows.length === 0) return <p className="muted">Henüz kayıt yok.</p>;
+  const value = (r) => (metric === 'count' ? Number(r.count) : Number(r.total_kg));
+  const sorted = [...rows].sort((a, b) => value(b) - value(a) || a.city.localeCompare(b.city, 'tr'));
+  const shown = all ? sorted : sorted.slice(0, 12);
+  const max = Math.max(1, ...shown.map(value));
+  const sum = rows.reduce((a, r) => a + value(r), 0) || 1;
+  return (
+    <>
+      <div className="seg" role="group" aria-label="Grafik ölçütü">
+        <button type="button" className={metric === 'count' ? 'on' : ''} aria-pressed={metric === 'count'} onClick={() => setMetric('count')}>Katılımcı sayısı</button>
+        <button type="button" className={metric === 'kg' ? 'on' : ''} aria-pressed={metric === 'kg'} onClick={() => setMetric('kg')}>Emisyon (kg CO₂e)</button>
+      </div>
+      {shown.map((r) => (
+        <div className="bar" key={r.city}>
+          <span>{r.city} <small>· %{num((value(r) / sum) * 100, 1)}</small></span>
+          <b>{metric === 'count' ? num(r.count) : `${num(r.total_kg, 0)} kg`}</b>
+          <i style={{ width: `${Math.max(2, (value(r) / max) * 100)}%` }} />
+        </div>
+      ))}
+      {rows.length > 12 && (
+        <button type="button" className="ghost small" onClick={() => setAll((v) => !v)}>
+          {all ? 'Daha az göster' : `Tüm illeri göster (${rows.length})`}
+        </button>
+      )}
+    </>
+  );
+}
+
 function Stat({ label, value, sub }) {
   return <div><small>{label}</small><strong>{value}</strong>{sub && <span className="sub">{sub}</span>}</div>;
 }
@@ -96,7 +134,7 @@ function SettingsForm({ settings, onSave, busy }) {
   const [s, setS] = useState({
     event_name: settings.event_name ?? '', event_date: settings.event_date ?? '',
     target_participants: settings.target_participants ?? '', tree_equivalent_kg: settings.tree_equivalent_kg ?? '',
-    submissions_open: settings.submissions_open,
+    submissions_open: settings.submissions_open, live_counter_enabled: settings.live_counter_enabled ?? true,
   });
   const set = (k) => (e) => setS((x) => ({ ...x, [k]: e.target.type === 'checkbox' ? e.target.checked : e.target.value }));
   return (
@@ -111,6 +149,7 @@ function SettingsForm({ settings, onSave, busy }) {
         <input type="number" min="0" step="any" inputMode="decimal" value={s.tree_equivalent_kg} onChange={set('tree_equivalent_kg')} />
         <em>Katılımcıya "karbon ayak izinize karşılık N adet fide dikilecektir" olarak gösterilir (yukarı yuvarlanır). Boş bırakılırsa fide gösterilmez. Önerilen yaklaşık değer: 50.</em></label>
       <label className="check"><input type="checkbox" checked={s.submissions_open} onChange={set('submissions_open')} /> Form yanıt kabul ediyor</label>
+      <label className="check"><input type="checkbox" checked={s.live_counter_enabled} onChange={set('live_counter_enabled')} /> Katılımcıya sonuç sonrası canlı sayaç göster (yalnızca toplam sayılar)</label>
       <button className="primary" disabled={busy}>Ayarları kaydet</button>
     </form>
   );
@@ -189,7 +228,7 @@ function Dashboard() {
       <section className="stats" aria-label="Ölçülen katılımcı verileri">
         <Stat label="Form cevabı" value={num(summary.responses)} />
         <Stat label="Ölçülen toplam" value={tonFmt(measured.total_kg)} sub={`Kişi başı ${num(measured.avg_kg, 2)} kg`} />
-        <Stat label="Ulaşım" value={tonFmt(measured.transport_kg)} />
+        <Stat label="Ulaşım" value={tonFmt(measured.transport_kg)} sub={`Son kilometre: ${num(measured.last_mile_users)} kişi · ${kgFmt(measured.last_mile_kg)}`} />
         <Stat label="Konaklama" value={tonFmt(measured.accommodation_kg)} sub={`${num(measured.hotel_guests)} kişi · ${num(measured.hotel_nights)} gece`} />
         <Stat label="Dikilecek fide" value={summary.trees == null ? '—' : num(summary.trees.event_estimated)}
           sub={summary.trees == null ? 'Katsayı girilmedi' : `Katılımcı bazlı yuvarlamayla ${num(summary.trees.participants_individual)}`} />
@@ -223,6 +262,11 @@ function Dashboard() {
             <i style={{ width: `${Math.max(2, (m.count / maxMode) * 100)}%` }} />
           </div>
         ))}
+      </section>
+
+      <section className="admin-card">
+        <h2>İl bazlı dağılım <small>({num(summary.by_city.length)} il)</small></h2>
+        <CityChart rows={summary.by_city} />
       </section>
 
       <div className="two-col">

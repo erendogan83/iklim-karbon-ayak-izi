@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { EVENT_CONFIG } from './config.js';
+import { LAST_MILE_OPTIONS } from './data/modes.js';
+import { fetchCounter } from './api.js';
 
 const MAX_TREES_SHOWN = 18;
 const kg = (n) => Number(n).toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -26,6 +28,37 @@ function useCountUp(target, ms = 1300) {
     return () => cancelAnimationFrame(raf);
   }, [target, ms]);
   return value;
+}
+
+const int = (n) => Math.round(n).toLocaleString('tr-TR');
+const fmtTotal = (v) => (v >= 1000
+  ? `${(v / 1000).toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} t`
+  : `${Math.round(v).toLocaleString('tr-TR')} kg`);
+
+// Etkinliğin genel canlı sayacı: yalnızca toplam sayılar. Kapalıysa/erişilemezse hiç görünmez.
+function LiveCounter() {
+  const [data, setData] = useState(null);
+  useEffect(() => {
+    let alive = true;
+    const load = async () => { const d = await fetchCounter(); if (alive && d) setData(d); };
+    load();
+    const timer = setInterval(() => { if (document.visibilityState === 'visible') load(); }, 20000);
+    return () => { alive = false; clearInterval(timer); };
+  }, []);
+  const responses = useCountUp(Number(data?.responses ?? 0), 1300);
+  const total = useCountUp(Number(data?.total_kg ?? 0), 1600);
+  const trees = useCountUp(Number(data?.trees ?? 0), 1600);
+  if (!data) return null;
+  return (
+    <div className="live-card" role="group" aria-label="Etkinliğin canlı sayacı">
+      <div className="live-head"><span className="live-dot" aria-hidden="true" /> Etkinliğin canlı sayacı</div>
+      <div className="live-grid">
+        <div><b>{int(responses)}</b><small>hesaplayan katılımcı</small></div>
+        <div><b>{fmtTotal(total)}</b><small>toplam CO₂e</small></div>
+        {data.trees != null && <div><b>{int(trees)}</b><small>dikilecek fide</small></div>}
+      </div>
+    </div>
+  );
 }
 
 // Çam (kozalaklı) silueti
@@ -56,6 +89,9 @@ export default function Result({ headingRef, values, trees, status, message, onR
         <div><small>Ulaşım</small><b>{kg(values.transport_kg)} kg CO₂e</b></div>
         <div><small>Konaklama</small><b>{kg(values.accommodation_kg)} kg CO₂e</b></div>
       </div>
+      {Number(values.last_mile_kg) > 0 && (
+        <p className="muted fine">Ulaşım değerinin {kg(values.last_mile_kg)} kg CO₂e kısmı, {(LAST_MILE_OPTIONS.find((o) => o.id === values.last_mile_mode)?.label ?? 'ek ulaşım').toLocaleLowerCase('tr-TR')} ile yaptığınız son kilometre yolculuğundandır.</p>
+      )}
       <p className="muted fine">Bu değer etkinlik kapsamında verdiğiniz ulaşım ve konaklama bilgilerine göre hesaplanan yaklaşık bireysel emisyon değeridir.</p>
 
       {trees != null && (
@@ -75,6 +111,8 @@ export default function Result({ headingRef, values, trees, status, message, onR
           )}
         </div>
       )}
+
+      {status === 'saved' && <LiveCounter />}
 
       <div className={`status ${status}`} role="status" aria-live="polite">
         {status === 'saving' && 'Sonucunuz anonim olarak kaydediliyor…'}

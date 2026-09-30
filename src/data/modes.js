@@ -15,3 +15,18 @@ export const MODES = [
 ];
 
 export const MODE_BY_ID = Object.fromEntries(MODES.map((m) => [m.id, m]));
+
+// Son kilometre (havalimanı / gar / otogar -> etkinlik alanı) seçenekleri. id = sunucudaki ulaşım türü.
+// Önerilen km: kabaca Gaziantep havalimanı ~20, gar ~5, otogar ~8 km; katılımcı değiştirebilir.
+export const LAST_MILE_OPTIONS = [
+  { id: 'Taksi', icon: '🚕', label: 'Taksi' },
+  { id: 'Otobüs', icon: '🚌', label: 'Şehir içi otobüs' },
+  { id: 'Servis/Minibüs', icon: '🚐', label: 'Servis / Minibüs' },
+  { id: 'Tramvay/Metro', icon: '🚇', label: 'Tramvay / Gaziray' },
+  { id: 'Özel araç', icon: '🚗', label: 'Özel araç (biri aldı)', askOccupancy: true },
+];
+export const LAST_MILE_CONTEXT = {
+  'Uçak': { from: 'Havalimanından', suggestedKm: 20 },
+  Tren: { from: 'Garından', suggestedKm: 5 },
+  'Otobüs': { from: 'Otogardan', suggestedKm: 8 },
+};

@@ -57,13 +57,48 @@ export function computeEmissions({ mode, subtype, oneWayKm, occupancy = 1, hotel
   return { transport_kg: round4(transport), accommodation_kg: round4(accommodation), total_kg: round4(transport + accommodation) };
 }
 
+// Son kilometre: uçak/tren/şehirlerarası otobüsle gelenlerin havalimanı-gar-otogardan etkinliğe ulaşımı.
+export const LAST_MILE_KM_LIMITS = { min: 0, max: 100 };
+export const LAST_MILE_SUBTYPES = {
+  Taksi: 'Standart',
+  'Otobüs': 'Şehir içi',
+  'Servis/Minibüs': 'Otobüs vekil faktörü',
+  'Tramvay/Metro': 'Hafif raylı',
+  'Özel araç': 'Bilinmiyor',
+};
+export function lastMileEligible(city, mode, subtype) {
+  return Boolean(city) && city !== DESTINATION && (mode === 'Uçak' || mode === 'Tren' || (mode === 'Otobüs' && subtype === 'Şehirler arası'));
+}
+
+// lastMile: { mode, km, occupancy } | null. Emisyon = tek yön km × 2 × faktör (özel araçta / kişi sayısı).
+function computeLastMile(lastMile) {
+  const subtype = LAST_MILE_SUBTYPES[lastMile.mode];
+  const factor = subtype && getFactor(lastMile.mode, subtype);
+  if (!factor) throw new CarbonInputError('invalid_last_mile');
+  const km = Number(lastMile.km);
+  if (!Number.isFinite(km) || km < LAST_MILE_KM_LIMITS.min || km > LAST_MILE_KM_LIMITS.max) throw new CarbonInputError('invalid_last_distance');
+  const occ = lastMile.mode === 'Özel araç' ? clampInt(lastMile.occupancy ?? 1, LIMITS.occupancy) : 1;
+  const rounded = Math.round(km * 10) / 10;
+  return { last_mile_mode: lastMile.mode, last_mile_km: rounded, last_mile_occupancy: occ, last_mile_kg: round4((rounded * 2 * factor.factor) / occ) };
+}
+
 // Form girdisinden tam sonuç. Sunucu ile aynı sınırları/normalleştirmeyi uygular.
-export function calculate({ city, mode, subtype, occupancy = 1, hotelNights = 0, roomOccupancy = 1, distanceKm = null }) {
+export function calculate({ city, mode, subtype, occupancy = 1, hotelNights = 0, roomOccupancy = 1, distanceKm = null, lastMile = null }) {
   const oneWayKm = oneWayDistanceKm(city, mode, distanceKm);
+  let last = { last_mile_mode: null, last_mile_km: 0, last_mile_occupancy: 1, last_mile_kg: 0 };
+  if (lastMile) {
+    if (!lastMileEligible(city, mode, subtype)) throw new CarbonInputError('invalid_last_mile');
+    last = computeLastMile(lastMile);
+  }
   const userDistance = distanceKm !== null && distanceKm !== undefined && distanceKm !== '' && mode !== 'Yaya' && mode !== 'Bisiklet' && mode !== 'Uçak';
   const occ = mode === 'Özel araç' ? clampInt(occupancy, LIMITS.occupancy) : 1;
   const nights = clampInt(hotelNights, LIMITS.hotelNights);
   const room = nights > 0 ? clampInt(roomOccupancy, LIMITS.roomOccupancy) : 1;
   const e = computeEmissions({ mode, subtype, oneWayKm, occupancy: occ, hotelNights: nights, roomOccupancy: room });
-  return { city, mode, subtype, distance_km: oneWayKm, distance_source: userDistance ? 'user' : 'city', occupancy: occ, hotel_nights: nights, room_occupancy: room, ...e };
+  const transport = round4(e.transport_kg + last.last_mile_kg);
+  return {
+    city, mode, subtype, distance_km: oneWayKm, distance_source: userDistance ? 'user' : 'city', occupancy: occ,
+    hotel_nights: nights, room_occupancy: room, ...last,
+    transport_kg: transport, accommodation_kg: e.accommodation_kg, total_kg: round4(transport + e.accommodation_kg),
+  };
 }

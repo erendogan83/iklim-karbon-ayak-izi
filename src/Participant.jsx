@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { CITIES, DISTANCE_LIMITS, LIMITS, calculate, oneWayDistanceKm } from './lib/carbon.js';
-import { MODES, MODE_BY_ID } from './data/modes.js';
+import { CITIES, DISTANCE_LIMITS, LAST_MILE_KM_LIMITS, LIMITS, calculate, lastMileEligible, oneWayDistanceKm } from './lib/carbon.js';
+import { LAST_MILE_CONTEXT, LAST_MILE_OPTIONS, MODES, MODE_BY_ID } from './data/modes.js';
 import { EVENT_CONFIG } from './config.js';
 import { newSessionId, submitCarbon, saveErrorMessage } from './api.js';
 import Result from './Result.jsx';
+import Credit from './Credit.jsx';
 
 const POPULAR = ['İstanbul', 'Ankara', 'İzmir', 'Adana', 'Şanlıurfa', 'Diyarbakır', 'Kahramanmaraş', 'Hatay', 'Mersin', 'Kayseri'];
 const tr = (s) => s.toLocaleLowerCase('tr-TR');
@@ -24,6 +25,9 @@ export default function Participant() {
   const [step, setStep] = useState(0);
   const [form, setForm] = useState(INITIAL);
   const [distanceEdit, setDistanceEdit] = useState(null); // null = kullanıcı dokunmadı, ilden gelen öneri geçerli
+  const [lastMode, setLastMode] = useState('none');        // son kilometre: 'none' veya LAST_MILE_OPTIONS id
+  const [lastKmEdit, setLastKmEdit] = useState(null);
+  const [lastOcc, setLastOcc] = useState(2);
   const [query, setQuery] = useState('');
   const [error, setError] = useState('');
   const [result, setResult] = useState(null); // { values, status: 'saving'|'saved'|'failed', trees, message }
@@ -33,13 +37,23 @@ export default function Participant() {
   const update = (patch) => setForm((f) => ({ ...f, ...patch }));
   const modeDef = MODE_BY_ID[form.mode];
   const needsDetails = Boolean(modeDef && (modeDef.subtypes.length > 1 || modeDef.askOccupancy || modeDef.askDistance));
-  const steps = useMemo(() => ['city', 'mode', ...(needsDetails ? ['details'] : []), 'stay', 'confirm'], [needsDetails]);
+  const hasLastMile = lastMileEligible(form.city, form.mode, form.subtype);
+  const steps = useMemo(
+    () => ['city', 'mode', ...(needsDetails ? ['details'] : []), ...(hasLastMile ? ['lastmile'] : []), 'stay', 'confirm'],
+    [needsDetails, hasLastMile],
+  );
   const current = steps[step];
 
   // İlden hesaplanan tek yön karayolu mesafesi öneri olarak gelir; Gaziantep'ten gelenlerde 0 olduğundan boş bırakılıp sorulur.
   const suggestedKm = modeDef?.askDistance && form.city ? Math.round(oneWayDistanceKm(form.city, form.mode)) : 0;
   const distanceValue = distanceEdit ?? (suggestedKm > 0 ? String(suggestedKm) : '');
   const distanceNumber = distanceValue === '' ? NaN : Number(distanceValue);
+
+  const lastCtx = LAST_MILE_CONTEXT[form.mode];
+  const lastDef = LAST_MILE_OPTIONS.find((o) => o.id === lastMode);
+  const lastKmValue = lastKmEdit ?? String(lastCtx?.suggestedKm ?? '');
+  const lastKmNumber = lastKmValue === '' ? NaN : Number(lastKmValue);
+  const lastMileInput = hasLastMile && lastDef ? { mode: lastMode, km: lastKmNumber, occupancy: lastOcc } : null;
 
   useEffect(() => { headingRef.current?.focus(); }, [step, result === null]);
   // Gönderim gecikmesi olmasın: son adımda supabase paketini arka planda ısıt.
@@ -55,7 +69,7 @@ export default function Participant() {
 
   function chooseMode(id) {
     update({ mode: id, subtype: MODE_BY_ID[id].defaultSubtype, occupancy: 1 });
-    setDistanceEdit(null);
+    setDistanceEdit(null); setLastMode('none'); setLastKmEdit(null);
   }
 
   async function save(values) {
@@ -65,6 +79,8 @@ export default function Participant() {
         city: values.city, mode: values.mode, subtype: values.subtype,
         occupancy: values.occupancy, hotelNights: values.hotel_nights, roomOccupancy: values.room_occupancy,
         distanceKm: values.distance_source === 'user' ? values.distance_km : null,
+        lastMile: values.last_mile_mode
+          ? { mode: values.last_mile_mode, km: values.last_mile_km, occupancy: values.last_mile_occupancy } : null,
       });
       // Sunucu hesabı esastır.
       setResult({ values: { ...values, ...saved }, status: 'saved', trees: saved.tree_count ?? null, message: '' });
@@ -81,12 +97,17 @@ export default function Participant() {
         && !(Number.isFinite(distanceNumber) && distanceNumber >= DISTANCE_LIMITS.min && distanceNumber <= DISTANCE_LIMITS.max)) {
       return setError(`Lütfen yaklaşık mesafeyi km olarak yazın (${DISTANCE_LIMITS.min}–${DISTANCE_LIMITS.max}).`);
     }
+    if (current === 'lastmile' && lastDef
+        && !(Number.isFinite(lastKmNumber) && lastKmNumber >= LAST_MILE_KM_LIMITS.min && lastKmNumber <= LAST_MILE_KM_LIMITS.max)) {
+      return setError(`Lütfen yaklaşık mesafeyi km olarak yazın (${LAST_MILE_KM_LIMITS.min}–${LAST_MILE_KM_LIMITS.max}).`);
+    }
     if (current !== 'confirm') return setStep((s) => s + 1);
 
     const values = calculate({
       city: form.city, mode: form.mode, subtype: form.subtype,
       occupancy: form.occupancy, hotelNights: form.hotelNights, roomOccupancy: form.roomOccupancy,
       distanceKm: modeDef.askDistance ? distanceNumber : null,
+      lastMile: lastMileInput,
     });
     setResult({ values, status: 'saving', trees: null, message: '' });
     save(values);
@@ -94,7 +115,7 @@ export default function Participant() {
 
   function restart() {
     sessionId.current = newSessionId();
-    setForm(INITIAL); setDistanceEdit(null); setQuery(''); setError(''); setResult(null); setStep(0);
+    setForm(INITIAL); setDistanceEdit(null); setLastMode('none'); setLastKmEdit(null); setLastOcc(2); setQuery(''); setError(''); setResult(null); setStep(0);
   }
 
   return (
@@ -131,7 +152,7 @@ export default function Participant() {
               <div className="chips" role="group" aria-label="İl önerileri">
                 {cityMatches.map((c) => (
                   <button type="button" key={c} className={`chip ${form.city === c ? 'selected' : ''}`} aria-pressed={form.city === c}
-                    onClick={() => { update({ city: c }); setDistanceEdit(null); setQuery(c); setError(''); }}>{c}</button>
+                    onClick={() => { update({ city: c }); setDistanceEdit(null); setLastKmEdit(null); setQuery(c); setError(''); }}>{c}</button>
                 ))}
                 {cityMatches.length === 0 && <span className="muted">Eşleşen il bulunamadı.</span>}
               </div>
@@ -156,7 +177,7 @@ export default function Participant() {
                 <div className="grid two" role="group" aria-label={modeDef.subtypeTitle}>
                   {modeDef.subtypes.map((v) => (
                     <button type="button" key={v} className={`option compact ${form.subtype === v ? 'selected' : ''}`} aria-pressed={form.subtype === v}
-                      onClick={() => update({ subtype: v })}>{v}</button>
+                      onClick={() => { update({ subtype: v }); setLastMode('none'); setLastKmEdit(null); }}>{v}</button>
                   ))}
                 </div>
               )}
@@ -176,6 +197,34 @@ export default function Participant() {
                     ? `Tek yön, yaklaşık değer yeterli. ${form.city} – Gaziantep arası yaklaşık ${suggestedKm.toLocaleString('tr-TR')} km olarak dolduruldu; farklıysa değiştirin.`
                     : 'Tek yön, yaklaşık değer yeterli: evinizden etkinlik alanına yaklaşık mesafeyi yazın.'}
                 </p>
+              </>}
+            </>}
+
+            {current === 'lastmile' && <>
+              <h1 ref={headingRef} tabIndex={-1}>{lastCtx.from} etkinlik alanına nasıl ulaştınız?</h1>
+              <p className="muted">Gaziantep içindeki son yolculuğunuzu seçin.</p>
+              <div className="grid" role="group" aria-label="Son kilometre ulaşımı">
+                <button type="button" className={`option wide compact ${lastMode === 'none' ? 'selected' : ''}`} aria-pressed={lastMode === 'none'}
+                  onClick={() => { setLastMode('none'); setError(''); }}>Ek ulaşım kullanmadım</button>
+                {LAST_MILE_OPTIONS.map((o) => (
+                  <button type="button" key={o.id} className={`option ${lastMode === o.id ? 'selected' : ''}`} aria-pressed={lastMode === o.id}
+                    onClick={() => { setLastMode(o.id); setError(''); }}>
+                    <span aria-hidden="true">{o.icon}</span><b>{o.label}</b>
+                  </button>
+                ))}
+              </div>
+              {lastDef && <>
+                {lastDef.askOccupancy && <>
+                  <h2>Araçta toplam kaç kişiydiniz?</h2>
+                  <Counter label="Araçtaki kişi sayısı" value={lastOcc} {...LIMITS.occupancy} onChange={setLastOcc} />
+                </>}
+                <h2><label htmlFor="lkm">Yaklaşık kaç km?</label></h2>
+                <div className="km-field">
+                  <input id="lkm" type="number" inputMode="numeric" min={LAST_MILE_KM_LIMITS.min} max={LAST_MILE_KM_LIMITS.max} step="1"
+                    value={lastKmValue} placeholder="0" onChange={(e) => { setLastKmEdit(e.target.value); setError(''); }} />
+                  <span aria-hidden="true">km</span>
+                </div>
+                <p className="muted fine">Tek yön, yaklaşık değer yeterli. {lastCtx.from} etkinlik alanına yaklaşık {lastCtx.suggestedKm} km olarak dolduruldu; farklıysa değiştirin.</p>
               </>}
             </>}
 
@@ -201,6 +250,7 @@ export default function Participant() {
               <ul className="summary">
                 <li>{form.city}</li>
                 <li>{form.mode}{modeDef.subtypes.length > 1 ? ` · ${form.subtype}` : ''}{modeDef.askOccupancy ? ` · ${form.occupancy} kişi` : ''}{modeDef.askDistance ? ` · yaklaşık ${distanceNumber.toLocaleString('tr-TR')} km` : ''}</li>
+                {lastDef && <li>Son yol: {lastDef.label} · yaklaşık {lastKmNumber.toLocaleString('tr-TR')} km</li>}
                 <li>{form.hotelNights > 0 ? `${form.hotelNights} gece · odada ${form.roomOccupancy} kişi` : 'Konaklama yok'}</li>
               </ul>
             </>}
@@ -214,6 +264,7 @@ export default function Participant() {
           </div>
         )}
       </section>
+      <Credit />
       <footer>Anonim hesaplama · Ad soyad, telefon ve e-posta alınmaz</footer>
     </main>
   );

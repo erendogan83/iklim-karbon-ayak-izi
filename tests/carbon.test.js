@@ -2,7 +2,7 @@
 // (Katılımcı Hesabı!F:N) birebir çalıştırılmasıyla elde edilmiştir (17 senaryo, fark 0).
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { calculate, computeEmissions, CITIES, CarbonInputError } from '../src/lib/carbon.js';
+import { calculate, computeEmissions, lastMileEligible, CITIES, CarbonInputError } from '../src/lib/carbon.js';
 import { CITY_DATA } from '../src/data/cities.js';
 import { EMISSION_FACTORS } from '../src/data/factors.js';
 
@@ -123,4 +123,28 @@ test('Kullanıcı km girdisi: mesafeyi ezer, sınır dışı reddedilir', () => 
   assert.throws(() => calculate({ city: 'Ankara', mode: 'Tren', subtype: 'Ulusal demiryolu', distanceKm: 3001 }), CarbonInputError);
   assert.throws(() => calculate({ city: 'Ankara', mode: 'Tren', subtype: 'Ulusal demiryolu', distanceKm: -1 }), CarbonInputError);
   assert.equal(calculate({ city: 'Ankara', mode: 'Tren', subtype: 'Ulusal demiryolu' }).distance_source, 'city');
+});
+
+test('Son kilometre: havalimanı taksisi ana ulaşıma eklenir', () => {
+  const base = calculate({ city: 'Ankara', mode: 'Uçak', subtype: 'İç hat - ortalama' });
+  const r = calculate({ city: 'Ankara', mode: 'Uçak', subtype: 'İç hat - ortalama', lastMile: { mode: 'Taksi', km: 20 } });
+  close(r.last_mile_kg, 20 * 2 * 0.14861);
+  close(r.transport_kg, base.transport_kg + r.last_mile_kg);
+  close(r.total_kg, base.total_kg + r.last_mile_kg);
+  assert.equal(r.last_mile_mode, 'Taksi');
+  const car = calculate({ city: 'Ankara', mode: 'Tren', subtype: 'Ulusal demiryolu', lastMile: { mode: 'Özel araç', km: 10, occupancy: 2 } });
+  close(car.last_mile_kg, (10 * 2 * 0.16591) / 2);
+  assert.equal(calculate({ city: 'Ankara', mode: 'Uçak', subtype: 'İç hat - ortalama' }).last_mile_kg, 0);
+});
+
+test('Son kilometre: uygunluk kuralları', () => {
+  assert.equal(lastMileEligible('Ankara', 'Uçak', 'İç hat - ortalama'), true);
+  assert.equal(lastMileEligible('Ankara', 'Tren', 'Ulusal demiryolu'), true);
+  assert.equal(lastMileEligible('Ankara', 'Otobüs', 'Şehirler arası'), true);
+  assert.equal(lastMileEligible('Ankara', 'Otobüs', 'Şehir içi'), false);
+  assert.equal(lastMileEligible('Ankara', 'Özel araç', 'Benzinli'), false);
+  assert.equal(lastMileEligible('Gaziantep', 'Uçak', 'İç hat - ortalama'), false);
+  assert.throws(() => calculate({ city: 'Gaziantep', mode: 'Uçak', subtype: 'İç hat - ortalama', lastMile: { mode: 'Taksi', km: 5 } }), CarbonInputError);
+  assert.throws(() => calculate({ city: 'Ankara', mode: 'Uçak', subtype: 'İç hat - ortalama', lastMile: { mode: 'Taksi', km: 101 } }), CarbonInputError);
+  assert.throws(() => calculate({ city: 'Ankara', mode: 'Uçak', subtype: 'İç hat - ortalama', lastMile: { mode: 'Uçak', km: 5 } }), CarbonInputError);
 });

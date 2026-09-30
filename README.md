@@ -26,6 +26,12 @@ Faktörler tek yerde: [src/data/factors.js](src/data/factors.js) (kaynak: UK GHG
 
 **Dikilecek ağaç:** Admin panelinde "1 ağaç eşdeğeri (kg CO₂e)" girildiğinde katılımcı sonuç ekranında animasyonlu olarak "karbon ayak izinize karşılık GASKİ tarafından N adet yeşil çam fidesi dikilecektir" görür (N = ⌈kişisel emisyon / katsayı⌉; kurum ve tür adı `src/config.js`). Panel toplam dikilecek fide sayısını gösterir. Önerilen yaklaşık katsayı 50 kg CO₂e/fide (yavaş erken büyüme ve fide kaybı payı düşülmüş kaba tahmin); organizatör panelden değiştirebilir, boşsa fide gösterilmez.
 
+**Son kilometre:** Uçak, tren veya şehirlerarası otobüsle gelenlere (Gaziantep dışından) "havalimanından/garından/otogardan etkinlik alanına nasıl ulaştınız?" sorulur (taksi, şehir içi otobüs, servis, tramvay/Gaziray, özel araç; 0–100 km, öneri: havalimanı 20, gar 5, otogar 8 km). Emisyon = km × 2 × faktör ve ana ulaşıma eklenir; ayrıca `last_mile_*` sütunlarında saklanır.
+
+**Canlı sayaç:** Sonuç ekranında, kayıt başarılıysa, etkinliğin genel toplamı (katılımcı sayısı, toplam CO₂e, dikilecek fide) gösterilir ve 20 sn'de bir yenilenir. Yalnızca toplam sayılar döner (`public_counter()`), kayıt düzeyi veri sızmaz; admin panelinden kapatılabilir. **Not:** Bu, ilk gizlilik şartındaki "katılımcı toplam etkinlik verisini görmez" kuralından bilinçli bir sapmadır (organizatör isteğiyle).
+
+**Admin:** il bazlı dağılım grafiği (katılımcı sayısı / emisyon), son kilometre istatistiği, CSV raporunda il dağılımı.
+
 Arayüzde uçak için yalnızca "İç hat - ortalama" sunulur (etkinlik Türkiye içinde); sunucu Excel'deki 7 uçuş sınıfının hepsini kabul eder.
 
 ### Mesafeler

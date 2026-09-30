@@ -17,8 +17,8 @@ const as = async (role, uid = '') => {
   await db.query("select set_config('request.jwt.claim.sub', $1, false)", [uid]);
   if (role !== 'postgres') await db.exec(`set role ${role}`);
 };
-const submit = (o = {}) => db.query('select public.submit_carbon($1,$2,$3,$4,$5,$6,$7,$8::numeric) as r',
-  [o.session ?? randomUUID(), o.city ?? 'Ankara', o.mode ?? 'Tren', o.subtype ?? 'Ulusal demiryolu', o.occ ?? 1, o.nights ?? 0, o.room ?? 1, o.km ?? null]).then((x) => x.rows[0].r);
+const submit = (o = {}) => db.query('select public.submit_carbon($1,$2,$3,$4,$5,$6,$7,$8::numeric,$9::text,$10::numeric,$11::integer) as r',
+  [o.session ?? randomUUID(), o.city ?? 'Ankara', o.mode ?? 'Tren', o.subtype ?? 'Ulusal demiryolu', o.occ ?? 1, o.nights ?? 0, o.room ?? 1, o.km ?? null, o.lm ?? null, o.lkm ?? null, o.locc ?? 1]).then((x) => x.rows[0].r);
 const summary = async () => (await db.query('select public.admin_summary() as s')).rows[0].s;
 
 before(async () => {
@@ -140,6 +140,9 @@ test('TEST 10: 1500+ kayıt — toplamlar veritabanında doğru; tahmin/operasyo
   assert.ok(Math.abs(s.measured.transport_kg - expTransport) < 0.5);
   assert.ok(Math.abs(s.measured.accommodation_kg - expAccom) < 0.5);
   assert.equal(s.by_mode.reduce((a, m) => a + m.count, 0), N);
+  assert.equal(s.by_city.length, 81, 'il bazlı dağılım tüm illeri içerir');
+  assert.equal(s.by_city.reduce((a, c) => a + c.count, 0), N);
+  assert.equal(typeof s.measured.last_mile_users, 'number');
   assert.equal(s.trees, null, 'ağaç katsayısı girilmedikçe gösterilmez');
   assert.equal(s.estimate.participant_estimated_kg, s.measured.total_kg, 'hedef yokken tahmin = ölçülen');
   assert.equal(s.estimate.coverage, null);
@@ -240,4 +243,69 @@ test('dikilecek ağaç sayısı tam sayıdır ve yukarı yuvarlanır', async () 
   assert.equal(zero.tree_count, 0);
   await as('authenticated', ADMIN);
   await db.query(`select public.admin_update_settings('{"tree_equivalent_kg":""}')`);
+});
+
+test('son kilometre: hesap, saklama ve toplama dahil edilir; 81 il × istemci hesabıyla aynı', async () => {
+  await as('anon');
+  for (const city of CITIES.filter((c) => c !== 'Gaziantep')) {
+    for (const [mode, subtype, lm, lkm, locc] of [['Uçak', 'İç hat - ortalama', 'Taksi', 20], ['Tren', 'Ulusal demiryolu', 'Özel araç', 5, 3], ['Otobüs', 'Şehirler arası', 'Tramvay/Metro', 8]]) {
+      const r = await submit({ city, mode, subtype, lm, lkm, locc });
+      const c = calculate({ city, mode, subtype, lastMile: { mode: lm, km: lkm, occupancy: locc ?? 1 } });
+      for (const k of ['transport_kg', 'total_kg', 'last_mile_kg']) assert.ok(Math.abs(r[k] - c[k]) < 2e-4, `${city} ${mode} ${k}: sunucu ${r[k]} istemci ${c[k]}`);
+      assert.equal(r.last_mile_mode, lm);
+    }
+  }
+  const r = await submit({ city: 'Ankara', mode: 'Uçak', subtype: 'İç hat - ortalama', lm: 'Taksi', lkm: 20 });
+  const main = Number(r.transport_kg) - Number(r.last_mile_kg);
+  assert.ok(Math.abs(Number(r.last_mile_kg) - 20 * 2 * 0.14861) < 1e-3);
+  assert.ok(main > 0);
+  assert.ok(Math.abs(Number(r.total_kg) - (Number(r.transport_kg) + Number(r.accommodation_kg))) < 1e-3);
+  const car = await submit({ city: 'Ankara', mode: 'Tren', subtype: 'Ulusal demiryolu', lm: 'Özel araç', lkm: 10, locc: 2 });
+  assert.ok(Math.abs(Number(car.last_mile_kg) - (10 * 2 * 0.16591) / 2) < 1e-3);
+  const none = await submit({ city: 'Ankara', mode: 'Uçak', subtype: 'İç hat - ortalama' });
+  assert.equal(none.last_mile_mode, null);
+  assert.equal(Number(none.last_mile_kg), 0);
+});
+
+test('son kilometre: uygunsuz kombinasyonlar ve sınırlar reddedilir', async () => {
+  await as('anon');
+  const plane = { mode: 'Uçak', subtype: 'İç hat - ortalama' };
+  await assert.rejects(submit({ city: 'Gaziantep', ...plane, lm: 'Taksi', lkm: 5 }), /invalid_last_mile/);
+  await assert.rejects(submit({ mode: 'Yaya', subtype: 'Varsayılan', lm: 'Taksi', lkm: 5 }), /invalid_last_mile/);
+  await assert.rejects(submit({ mode: 'Otobüs', subtype: 'Şehir içi', lm: 'Taksi', lkm: 5 }), /invalid_last_mile/);
+  await assert.rejects(submit({ mode: 'Özel araç', subtype: 'Benzinli', lm: 'Taksi', lkm: 5 }), /invalid_last_mile/);
+  await assert.rejects(submit({ ...plane, lm: 'Uçak', lkm: 5 }), /invalid_last_mile/);
+  await assert.rejects(submit({ ...plane, lm: 'Yaya', lkm: 5 }), /invalid_last_mile/);
+  await assert.rejects(submit({ ...plane, lm: 'Taksi', lkm: 100.5 }), /invalid_last_distance/);
+  await assert.rejects(submit({ ...plane, lm: 'Taksi', lkm: -1 }), /invalid_last_distance/);
+  await assert.rejects(submit({ ...plane, lm: 'Taksi' }), /invalid_last_distance/);
+  await assert.rejects(submit({ ...plane, lm: 'Özel araç', lkm: 5, locc: 9 }), /invalid_last_occupancy/);
+});
+
+test('public_counter: anon yalnızca toplam sayıları görür; admin kapatabilir', async () => {
+  await as('postgres');
+  const total = (await db.query('select count(*)::int n, coalesce(sum(total_kg),0)::float8 t from public.carbon_submissions')).rows[0];
+  await as('anon');
+  let c = (await db.query('select public.public_counter() as c')).rows[0].c;
+  assert.equal(c.enabled, true);
+  assert.equal(c.responses, total.n);
+  assert.ok(Math.abs(c.total_kg - total.t) < 0.05);
+  assert.deepEqual(Object.keys(c).sort(), ['enabled', 'responses', 'total_kg', 'trees'], 'kayıt düzeyi veri sızmaz');
+  assert.equal(c.trees, null, 'katsayı yokken fide sayısı yok');
+  await assert.rejects(db.query('select * from public.carbon_submissions'), /permission denied/);
+
+  await as('authenticated', ADMIN);
+  await db.query(`select public.admin_update_settings('{"tree_equivalent_kg":50}')`);
+  await as('anon');
+  c = (await db.query('select public.public_counter() as c')).rows[0].c;
+  await as('postgres');
+  const trees = (await db.query('select coalesce(sum(ceil(total_kg/50)),0)::int t from public.carbon_submissions')).rows[0].t;
+  assert.equal(c.trees, trees);
+
+  await as('authenticated', ADMIN);
+  await db.query(`select public.admin_update_settings('{"live_counter_enabled":false,"tree_equivalent_kg":""}')`);
+  await as('anon');
+  assert.deepEqual((await db.query('select public.public_counter() as c')).rows[0].c, { enabled: false });
+  await as('authenticated', ADMIN);
+  await db.query(`select public.admin_update_settings('{"live_counter_enabled":true}')`);
 });
