@@ -126,6 +126,25 @@ function CityChart({ rows }) {
   );
 }
 
+// Tehlikeli bölge: tüm kayıtları silmek için "SİL" yazdırır.
+function DangerZone({ total, busy, onDelete }) {
+  const [text, setText] = useState('');
+  const confirmed = text.trim().toLocaleUpperCase('tr-TR') === 'SİL';
+  return (
+    <section className="admin-card danger-zone">
+      <h2>Deneme verilerini temizle</h2>
+      <p className="muted">
+        Tüm kayıtlar (<b>{num(total)}</b>) kalıcı olarak silinir ve <b>geri alınamaz</b>. Gerçek veri varsa önce yukarıdan CSV raporu indirin.
+        Etkinlik ayarları ve operasyon girdileri silinmez.
+      </p>
+      <label className="field"><span>Onaylamak için SİL yazın</span>
+        <input value={text} onChange={(e) => setText(e.target.value)} autoComplete="off" placeholder="SİL" /></label>
+      <button type="button" className="danger" disabled={busy || total === 0 || !confirmed}
+        onClick={async () => { await onDelete(); setText(''); }}>Tüm kayıtları sil</button>
+    </section>
+  );
+}
+
 function Stat({ label, value, sub }) {
   return <div><small>{label}</small><strong>{value}</strong>{sub && <span className="sub">{sub}</span>}</div>;
 }
@@ -204,6 +223,26 @@ function Dashboard() {
     catch (e) { setError(e.message || 'Kaydedilemedi.'); setBusy(false); }
   }
 
+  async function removeOne(r) {
+    if (!window.confirm(`Bu kaydı silmek istediğinize emin misiniz?\n${r.city} · ${r.mode} · ${num(r.total_kg, 2)} kg CO₂e`)) return;
+    setBusy(true); setError(''); setNote('');
+    try {
+      await call('admin_delete_submission', { p_id: r.id });
+      const lastPage = Math.max(0, Math.ceil((recent.total - 1) / PAGE_SIZE) - 1);
+      await load(Math.min(page, lastPage));
+      setNote('Kayıt silindi.');
+    } catch (e) { setError(e.message || 'Silinemedi.'); setBusy(false); }
+  }
+
+  async function removeAll() {
+    setBusy(true); setError(''); setNote('');
+    try {
+      const n = await call('admin_delete_all_submissions', { p_confirm: 'SİL' });
+      await load(0);
+      setNote(`${num(n)} kayıt silindi.`);
+    } catch (e) { setError(e.message || 'Silinemedi.'); setBusy(false); }
+  }
+
   if (!summary) return <main className="admin-shell">{error ? <div className="error" role="alert">{error}</div> : <p className="muted">Yükleniyor…</p>}</main>;
 
   const { measured, estimate, operational, event_total: total, settings } = summary;
@@ -280,13 +319,14 @@ function Dashboard() {
         <h2>Son kayıtlar <small>({num(recent.total)} kayıt)</small></h2>
         <div className="table-wrap">
           <table>
-            <thead><tr><th>Tarih</th><th>İl</th><th>Ulaşım</th><th className="r">Tek yön km</th><th className="r">Gece</th><th className="r">Ulaşım kg</th><th className="r">Konaklama kg</th><th className="r">Toplam kg</th></tr></thead>
+            <thead><tr><th>Tarih</th><th>İl</th><th>Ulaşım</th><th className="r">Tek yön km</th><th className="r">Gece</th><th className="r">Ulaşım kg</th><th className="r">Konaklama kg</th><th className="r">Toplam kg</th><th><span className="sr-only">İşlem</span></th></tr></thead>
             <tbody>
               {recent.rows.map((r) => (
                 <tr key={r.id}>
                   <td>{new Date(r.created_at).toLocaleString('tr-TR')}</td><td>{r.city}</td><td>{r.mode} · {r.subtype}</td>
                   <td className="r">{num(r.distance_km, 0)}</td><td className="r">{r.hotel_nights}</td>
                   <td className="r">{num(r.transport_kg, 2)}</td><td className="r">{num(r.accommodation_kg, 2)}</td><td className="r">{num(r.total_kg, 2)}</td>
+                  <td className="r"><button type="button" className="ghost small danger" disabled={busy} onClick={() => removeOne(r)}>Sil</button></td>
                 </tr>
               ))}
             </tbody>
@@ -298,6 +338,8 @@ function Dashboard() {
           <button className="ghost" disabled={busy || page + 1 >= pages} onClick={() => load(page + 1)}>Sonraki</button>
         </div>
       </section>
+
+      <DangerZone total={recent.total} busy={busy} onDelete={removeAll} />
     </main>
   );
 }

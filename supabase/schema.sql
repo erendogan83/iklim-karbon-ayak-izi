@@ -449,6 +449,35 @@ begin
 end;
 $$;
 
+-- Kayıt silme (yalnızca admin): tek kayıt veya tümü. "Tümü" için sunucu tarafında da onay metni istenir.
+-- (WHERE true: Supabase'in güvenli-silme uzantısı WHERE'siz DELETE'i reddeder.)
+create or replace function public.admin_delete_submission(p_id bigint)
+returns integer
+language plpgsql security definer set search_path = ''
+as $$
+declare n integer;
+begin
+  if not public.is_admin() then raise exception 'not_authorized' using errcode = '42501'; end if;
+  delete from public.carbon_submissions where id = p_id;
+  get diagnostics n = row_count;
+  return n;
+end;
+$$;
+
+create or replace function public.admin_delete_all_submissions(p_confirm text)
+returns integer
+language plpgsql security definer set search_path = ''
+as $$
+declare n integer;
+begin
+  if not public.is_admin() then raise exception 'not_authorized' using errcode = '42501'; end if;
+  if p_confirm is distinct from 'SİL' then raise exception 'confirmation_required' using errcode = '22023'; end if;
+  delete from public.carbon_submissions where true;
+  get diagnostics n = row_count;
+  return n;
+end;
+$$;
+
 -- Etkinlik ayarlarını güncelle (yalnızca gönderilen alanlar değişir; boş string = NULL).
 create or replace function public.admin_update_settings(p jsonb)
 returns void
@@ -500,6 +529,8 @@ revoke all on function public.admin_summary() from public, anon, authenticated;
 revoke all on function public.admin_recent_submissions(integer, integer) from public, anon, authenticated;
 revoke all on function public.admin_update_settings(jsonb) from public, anon, authenticated;
 revoke all on function public.admin_save_operational(jsonb) from public, anon, authenticated;
+revoke all on function public.admin_delete_submission(bigint) from public, anon, authenticated;
+revoke all on function public.admin_delete_all_submissions(text) from public, anon, authenticated;
 
 grant execute on function public.submit_carbon(uuid, text, text, text, integer, integer, integer, numeric, text, numeric, integer) to anon, authenticated;
 grant execute on function public.public_counter() to anon, authenticated;
@@ -508,3 +539,5 @@ grant execute on function public.admin_summary() to authenticated;
 grant execute on function public.admin_recent_submissions(integer, integer) to authenticated;
 grant execute on function public.admin_update_settings(jsonb) to authenticated;
 grant execute on function public.admin_save_operational(jsonb) to authenticated;
+grant execute on function public.admin_delete_submission(bigint) to authenticated;
+grant execute on function public.admin_delete_all_submissions(text) to authenticated;

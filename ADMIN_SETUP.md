@@ -19,7 +19,8 @@ delete from public.admin_users where user_id = 'UUID';
 ```
 
 ## Etkinlikten önce test verisini temizleme
-Deneme yanıtlarını canlıya geçmeden silmek için SQL Editor'da:
-```sql
-truncate public.carbon_submissions;
-```
+Admin panelinden (`/admin`):
+- **Tek kayıt:** "Son kayıtlar" tablosunda satırın sonundaki **Sil** düğmesi (onay sorar).
+- **Tüm kayıtlar:** panelin en altındaki **"Deneme verilerini temizle"** bölümünde kutuya **SİL** yazıp **"Tüm kayıtları sil"**. Geri alınamaz; gerçek veri varsa önce **CSV rapor indir**. Etkinlik ayarları ve operasyon girdileri silinmez.
+
+Alternatif (SQL Editor): `truncate public.carbon_submissions;`

@@ -193,6 +193,40 @@ test('form kapatılınca submit reddedilir; ağaç eşdeğeri ancak onaylıysa g
   assert.equal((await submit()).tree_count, null);
 });
 
+test('silme: yalnızca admin; tek kayıt ve onaylı toplu silme', async () => {
+  await as('anon');
+  await assert.rejects(db.query('select public.admin_delete_submission(1)'), /permission denied/);
+  await assert.rejects(db.query("select public.admin_delete_all_submissions('SİL')"), /permission denied/);
+  await as('authenticated', NORMAL_USER);
+  await assert.rejects(db.query('select public.admin_delete_submission(1)'), /not_authorized/);
+  await assert.rejects(db.query("select public.admin_delete_all_submissions('SİL')"), /not_authorized/);
+
+  await as('anon');
+  const keep = await submit({ city: 'Ankara' });
+  await as('postgres');
+  const before = (await db.query('select count(*)::int n from public.carbon_submissions')).rows[0].n;
+  const id = (await db.query('select id from public.carbon_submissions order by id desc limit 1')).rows[0].id;
+
+  await as('authenticated', ADMIN);
+  assert.equal((await db.query('select public.admin_delete_submission($1) as n', [id])).rows[0].n, 1);
+  assert.equal((await db.query('select public.admin_delete_submission($1) as n', [id])).rows[0].n, 0, 'olmayan kayıt 0 döner');
+  await assert.rejects(db.query('select public.admin_delete_all_submissions($1)', ['sil']), /confirmation_required/);
+  await assert.rejects(db.query('select public.admin_delete_all_submissions($1)', ['']), /confirmation_required/);
+  await assert.rejects(db.query('select public.admin_delete_all_submissions(null)'), /confirmation_required/);
+  await as('postgres');
+  assert.equal((await db.query('select count(*)::int n from public.carbon_submissions')).rows[0].n, before - 1, 'onaysız silme hiçbir şey silmez');
+
+  await as('authenticated', ADMIN);
+  const all = (await db.query("select public.admin_delete_all_submissions('SİL') as n")).rows[0].n;
+  assert.equal(all, before - 1);
+  const s = await summary();
+  assert.equal(s.responses, 0);
+  assert.equal(s.measured.total_kg, 0);
+  await as('anon');
+  assert.equal((await db.query('select public.public_counter() as c')).rows[0].c.responses, 0);
+  assert.ok(keep.saved);
+});
+
 test('eski MVP tablosu varsa yedeğe alınır ve kilitlenir', async () => {
   const d2 = new PGlite();
   await d2.exec(`
