@@ -103,9 +103,15 @@ export default function Result({ headingRef, values, trees, status, message, onR
             </div>
             <div className="grove-text">
               <strong><span className="tree-count">{Math.round(treeCount).toLocaleString('tr-TR')}</span> adet fide</strong>
-              <p>Karbon ayak izinize karşılık {EVENT_CONFIG.planter} tarafından {trees.toLocaleString('tr-TR')} adet {EVENT_CONFIG.treeName} dikilecektir.</p>
-              <small>Fide sayısı yaklaşık bir hesaba dayanır.</small>
             </div>
+            <div className="planter">
+              <img src="/gaski-logo.jpg" alt="GASKİ – Gaziantep Su ve Kanalizasyon İdaresi" width="104" height="104" decoding="async" />
+              <p>
+                Üretmiş olduğunuz karbon ayak izinizi karşılamak amacıyla {EVENT_CONFIG.planter} tarafından{' '}
+                <b>{trees.toLocaleString('tr-TR')} adet {EVENT_CONFIG.treeName}</b> {EVENT_CONFIG.plantingDate} tarihinde dikilecektir.
+              </p>
+            </div>
+            <small className="grove-note">Fide sayısı yaklaşık bir hesaba dayanır.</small>
           </> : (
             <div className="grove-text"><strong>Teşekkürler!</strong><p>Ayak iziniz sıfır olduğu için ek fide dikimi gerekmiyor.</p></div>
           )}

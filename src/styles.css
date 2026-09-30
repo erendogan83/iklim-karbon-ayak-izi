@@ -88,3 +88,8 @@ td small{color:#687c74}
 @media (prefers-reduced-motion:reduce){.live-dot{animation:none}}
 .live-grid{grid-template-columns:repeat(auto-fit,minmax(0,1fr))}
 .live-grid b{font-size:21px}
+.planter{display:flex;gap:14px;align-items:center;margin-top:4px;padding:10px;border-radius:16px;background:#fff;border:1px solid #d6e8dc}
+.planter img{flex:none;width:104px;height:104px;border-radius:12px;object-fit:contain}
+.planter p{margin:0;color:#284d3f;font-size:14px;line-height:1.5}
+.planter b{color:#0d5c45}
+.grove-note{display:block;margin-top:10px;color:#687c74;font-size:12px}

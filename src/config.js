@@ -6,4 +6,5 @@ export const EVENT_CONFIG = {
   destination: 'Gaziantep',
   planter: 'GASKİ',                   // fidanları diken kurum
   treeName: 'yeşil çam fidesi',       // dikilecek tür (sonuç ekranı metni)
+  plantingDate: '11 Ekim',            // dikim tarihi (sonuç ekranı metni)
 };
