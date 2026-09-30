@@ -33,14 +33,14 @@ begin
   end if;
 end $$;
 
-drop policy if exists "admins can see their own admin row" on public.admin_users;
-
 -- ---------------------------------------------------------------------------
 -- 1) Tablolar
 -- ---------------------------------------------------------------------------
 create table if not exists public.admin_users (
   user_id uuid primary key references auth.users (id) on delete cascade
 );
+-- Eski MVP şemasından kalan politika (artık gerekmiyor; tablo yukarıda garanti oluşturuldu).
+drop policy if exists "admins can see their own admin row" on public.admin_users;
 
 -- Tek satırlık etkinlik ayarları (id = 1).
 create table if not exists public.event_settings (
