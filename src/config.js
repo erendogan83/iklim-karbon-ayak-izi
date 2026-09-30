@@ -4,4 +4,6 @@
 export const EVENT_CONFIG = {
   name: 'İklim · Çevre · Kadın 2030',
   destination: 'Gaziantep',
+  planter: 'GASKİ',                   // fidanları diken kurum
+  treeName: 'yeşil çam fidesi',       // dikilecek tür (sonuç ekranı metni)
 };

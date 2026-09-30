@@ -1,4 +1,4 @@
-# Etkinlik Karbon Ayak İzi
+﻿# Etkinlik Karbon Ayak İzi
 
 Etkinliğe (Gaziantep) gelen katılımcıların ulaşım ve konaklama kaynaklı karbon ayak izini **anonim** ve hızlı hesaplayan mobil öncelikli web uygulaması; organizatör için toplam etkinlik raporu.
 
@@ -24,7 +24,7 @@ Faktörler tek yerde: [src/data/factors.js](src/data/factors.js) (kaynak: UK GHG
 
 **Mesafe:** Kara ulaşımında (özel araç, otobüs, servis, tren, tramvay/metro, taksi, motosiklet) katılımcıya "yaklaşık kaç km yol kat ettiniz?" sorulur; ilden hesaplanan statik mesafe öneri olarak dolu gelir, katılımcı değiştirebilir (0–3000 km, sunucuda doğrulanır; kayıtta `distance_source` = `user`/`city`). Gaziantep'ten gelenlerde öneri yoktur, km yazılır. Yaya/bisiklet 0 km, uçak ilden kuş uçuşudur.
 
-**Dikilecek ağaç:** Admin panelinde "1 ağaç eşdeğeri (kg CO₂e)" girildiğinde katılımcı sonuç ekranında animasyonlu olarak "karbon ayak izinize karşılık N ağaç dikilecek" görür (N = ⌈kişisel emisyon / katsayı⌉). Panel toplam dikilecek ağaç sayısını gösterir. Katsayıyı organizatör belirler; boşsa ağaç gösterilmez.
+**Dikilecek ağaç:** Admin panelinde "1 ağaç eşdeğeri (kg CO₂e)" girildiğinde katılımcı sonuç ekranında animasyonlu olarak "karbon ayak izinize karşılık GASKİ tarafından N adet yeşil çam fidesi dikilecektir" görür (N = ⌈kişisel emisyon / katsayı⌉; kurum ve tür adı `src/config.js`). Panel toplam dikilecek fide sayısını gösterir. Önerilen yaklaşık katsayı 50 kg CO₂e/fide (yavaş erken büyüme ve fide kaybı payı düşülmüş kaba tahmin); organizatör panelden değiştirebilir, boşsa fide gösterilmez.
 
 Arayüzde uçak için yalnızca "İç hat - ortalama" sunulur (etkinlik Türkiye içinde); sunucu Excel'deki 7 uçuş sınıfının hepsini kabul eder.
 
@@ -82,4 +82,4 @@ npm run build
 ## Yapılmayanlar / sonraya bırakılanlar
 - Gıda faktörleri (Excel'de var): katılımcı formunda yemek sorusu olmadığı için kullanılmıyor; gerekirse admin tarafına menü/öğün sayısı girdisi eklenir.
 - XLSX/PDF rapor (CSV hazır).
-- Ağaç katsayısı organizatörce belirlenip panelden girilmelidir (girilene kadar ağaç gösterilmez).
+- Fide katsayısı panelden girilmelidir (girilene kadar fide gösterilmez): Supabase SQL Editor'da `update public.event_settings set tree_equivalent_kg = 50 where id = 1;` veya `/admin` > Etkinlik ayarları.

@@ -66,3 +66,4 @@ td small{color:#687c74}
 .grove-text strong{display:block;font-size:26px;color:#0d5c45;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
 .grove-text p{margin:4px 0 0;color:#41584d;font-size:14px;line-height:1.45}
 @media (prefers-reduced-motion:reduce){.step,.result,.tree-svg{animation:none!important}}
+.grove-text small{display:block;margin-top:6px;color:#687c74;font-size:12px}

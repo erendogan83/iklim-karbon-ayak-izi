@@ -35,9 +35,9 @@ function buildReport(s) {
     ['Konaklama kaynaklı (ölçülen)', Number(s.measured.accommodation_kg)],
     ['Konaklama yapan katılımcı', s.measured.hotel_guests],
     ['Toplam konaklama gecesi', s.measured.hotel_nights],
-    ['1 ağaç katsayısı (kg CO2e)', s.trees ? Number(s.trees.kg_per_tree) : ''],
-    ['Dikilecek ağaç (tahmini etkinlik toplamına göre)', s.trees ? Number(s.trees.event_estimated) : ''],
-    ['Dikilecek ağaç (katılımcı bazlı yuvarlamayla, yalnızca yanıt verenler)', s.trees ? Number(s.trees.participants_individual) : ''],
+    ['1 fide katsayısı (kg CO2e)', s.trees ? Number(s.trees.kg_per_tree) : ''],
+    ['Dikilecek fide (tahmini etkinlik toplamına göre)', s.trees ? Number(s.trees.event_estimated) : ''],
+    ['Dikilecek fide (katılımcı bazlı yuvarlamayla, yalnızca yanıt verenler)', s.trees ? Number(s.trees.participants_individual) : ''],
     [],
     ['ULAŞIM TÜRÜ DAĞILIMI'],
     ['Ulaşım türü', 'Katılımcı', 'Toplam kg CO2e', 'Ulaşım kg CO2e'],
@@ -107,9 +107,9 @@ function SettingsForm({ settings, onSave, busy }) {
       <label className="field"><span>Toplam katılımcı sayısı (hedef)</span>
         <input type="number" min="0" step="1" inputMode="numeric" value={s.target_participants} onChange={set('target_participants')} />
         <em>Girilirse katılımcı emisyonu kapsama oranına göre tahmin edilir.</em></label>
-      <label className="field"><span>1 ağaç eşdeğeri (kg CO₂e)</span>
+      <label className="field"><span>1 fidenin karşıladığı karbon (kg CO₂e)</span>
         <input type="number" min="0" step="any" inputMode="decimal" value={s.tree_equivalent_kg} onChange={set('tree_equivalent_kg')} />
-        <em>Katılımcıya "karbon ayak izinize karşılık N ağaç dikilecek" olarak gösterilir (yukarı yuvarlanır). Boş bırakılırsa ağaç gösterilmez. Değeri organizatör belirler.</em></label>
+        <em>Katılımcıya "karbon ayak izinize karşılık N adet fide dikilecektir" olarak gösterilir (yukarı yuvarlanır). Boş bırakılırsa fide gösterilmez. Önerilen yaklaşık değer: 50.</em></label>
       <label className="check"><input type="checkbox" checked={s.submissions_open} onChange={set('submissions_open')} /> Form yanıt kabul ediyor</label>
       <button className="primary" disabled={busy}>Ayarları kaydet</button>
     </form>
@@ -191,7 +191,7 @@ function Dashboard() {
         <Stat label="Ölçülen toplam" value={tonFmt(measured.total_kg)} sub={`Kişi başı ${num(measured.avg_kg, 2)} kg`} />
         <Stat label="Ulaşım" value={tonFmt(measured.transport_kg)} />
         <Stat label="Konaklama" value={tonFmt(measured.accommodation_kg)} sub={`${num(measured.hotel_guests)} kişi · ${num(measured.hotel_nights)} gece`} />
-        <Stat label="Dikilecek ağaç" value={summary.trees == null ? '—' : num(summary.trees.event_estimated)}
+        <Stat label="Dikilecek fide" value={summary.trees == null ? '—' : num(summary.trees.event_estimated)}
           sub={summary.trees == null ? 'Katsayı girilmedi' : `Katılımcı bazlı yuvarlamayla ${num(summary.trees.participants_individual)}`} />
       </section>
 
