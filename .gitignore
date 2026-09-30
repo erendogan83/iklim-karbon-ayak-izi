@@ -1,0 +1,14 @@
+node_modules
+dist
+.DS_Store
+
+# Ortam değişkenleri / gizli anahtarlar — ASLA commit'lenmez
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+.dev.vars
+supabase/.temp
+supabase/.env
+supabase/.branches

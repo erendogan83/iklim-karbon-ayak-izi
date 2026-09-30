@@ -1,0 +1,28 @@
+{
+  "name": "iklim-karbon-ayak-izi",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "test": "node --test",
+    "gen:sql": "node scripts/generate-reference-sql.mjs",
+    "gen:cities": "node scripts/generate-cities.mjs"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.57.0",
+    "lucide-react": "^0.468.0",
+    "react": "^19.1.1",
+    "react-dom": "^19.1.1"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "^0.3.0",
+    "@vitejs/plugin-react": "^5.0.4",
+    "vite": "^7.1.3"
+  }
+}
