@@ -240,7 +240,8 @@ test('dikilecek ağaç sayısı tam sayıdır ve yukarı yuvarlanır', async () 
   assert.equal(r.tree_count, Math.ceil(r.total_kg / 50));
   assert.ok(Number.isInteger(r.tree_count));
   const zero = await submit({ city: 'Gaziantep', mode: 'Yaya', subtype: 'Varsayılan' });
-  assert.equal(zero.tree_count, 0);
+  assert.equal(Number(zero.total_kg), 0);
+  assert.equal(zero.tree_count, 1, 'ayak izi 0 olsa bile en az 1 fide');
   await as('authenticated', ADMIN);
   await db.query(`select public.admin_update_settings('{"tree_equivalent_kg":""}')`);
 });
@@ -299,7 +300,7 @@ test('public_counter: anon yalnızca toplam sayıları görür; admin kapatabili
   await as('anon');
   c = (await db.query('select public.public_counter() as c')).rows[0].c;
   await as('postgres');
-  const trees = (await db.query('select coalesce(sum(ceil(total_kg/50)),0)::int t from public.carbon_submissions')).rows[0].t;
+  const trees = (await db.query('select coalesce(sum(greatest(1, ceil(total_kg/50))),0)::int t from public.carbon_submissions')).rows[0].t;
   assert.equal(c.trees, trees);
 
   await as('authenticated', ADMIN);

@@ -299,9 +299,9 @@ begin
     'transport_kg', v_row.transport_kg, 'accommodation_kg', v_row.accommodation_kg, 'total_kg', v_row.total_kg,
     'last_mile_mode', v_row.last_mile_mode, 'last_mile_km', v_row.last_mile_km,
     'last_mile_occupancy', v_row.last_mile_occupancy, 'last_mile_kg', v_row.last_mile_kg,
-    -- Dikilecek ağaç sayısı: tam sayı, yukarı yuvarlanır (emisyon > 0 ise en az 1). Katsayı onaylanmadıysa NULL.
+    -- Dikilecek fide sayısı: tam sayı, yukarı yuvarlanır; ayak izi 0 olsa bile en az 1. Katsayı girilmediyse NULL.
     'tree_count', case when v_settings.tree_equivalent_kg is null then null
-                       else ceil(v_row.total_kg / v_settings.tree_equivalent_kg)::integer end,
+                       else greatest(1, ceil(v_row.total_kg / v_settings.tree_equivalent_kg))::integer end,
     'factor_version', v_row.factor_version
   );
 end;
@@ -324,7 +324,7 @@ begin
             'responses', count(*),
             'total_kg', coalesce(round(sum(total_kg), 2), 0),
             'trees', case when s.tree_equivalent_kg is null then null
-                          else coalesce(sum(ceil(total_kg / s.tree_equivalent_kg)), 0) end)
+                          else coalesce(sum(greatest(1, ceil(total_kg / s.tree_equivalent_kg))), 0) end)
             from public.carbon_submissions);
 end;
 $$;
@@ -421,7 +421,7 @@ begin
     'trees', case when s.tree_equivalent_kg is null then null else jsonb_build_object(
       'kg_per_tree', s.tree_equivalent_kg,
       'event_estimated', ceil((estimated + op_total) / s.tree_equivalent_kg),
-      'participants_individual', (select coalesce(sum(ceil(total_kg / s.tree_equivalent_kg)), 0) from public.carbon_submissions)
+      'participants_individual', (select coalesce(sum(greatest(1, ceil(total_kg / s.tree_equivalent_kg))), 0) from public.carbon_submissions)
     ) end
   );
 end;
