@@ -17,8 +17,8 @@ const as = async (role, uid = '') => {
   await db.query("select set_config('request.jwt.claim.sub', $1, false)", [uid]);
   if (role !== 'postgres') await db.exec(`set role ${role}`);
 };
-const submit = (o = {}) => db.query('select public.submit_carbon($1,$2,$3,$4,$5,$6,$7) as r',
-  [o.session ?? randomUUID(), o.city ?? 'Ankara', o.mode ?? 'Tren', o.subtype ?? 'Ulusal demiryolu', o.occ ?? 1, o.nights ?? 0, o.room ?? 1]).then((x) => x.rows[0].r);
+const submit = (o = {}) => db.query('select public.submit_carbon($1,$2,$3,$4,$5,$6,$7,$8::numeric) as r',
+  [o.session ?? randomUUID(), o.city ?? 'Ankara', o.mode ?? 'Tren', o.subtype ?? 'Ulusal demiryolu', o.occ ?? 1, o.nights ?? 0, o.room ?? 1, o.km ?? null]).then((x) => x.rows[0].r);
 const summary = async () => (await db.query('select public.admin_summary() as s')).rows[0].s;
 
 before(async () => {
@@ -140,7 +140,7 @@ test('TEST 10: 1500+ kayıt — toplamlar veritabanında doğru; tahmin/operasyo
   assert.ok(Math.abs(s.measured.transport_kg - expTransport) < 0.5);
   assert.ok(Math.abs(s.measured.accommodation_kg - expAccom) < 0.5);
   assert.equal(s.by_mode.reduce((a, m) => a + m.count, 0), N);
-  assert.equal(s.tree_equivalent, null, 'ağaç katsayısı onaylanmadıkça gösterilmez');
+  assert.equal(s.trees, null, 'ağaç katsayısı girilmedikçe gösterilmez');
   assert.equal(s.estimate.participant_estimated_kg, s.measured.total_kg, 'hedef yokken tahmin = ölçülen');
   assert.equal(s.estimate.coverage, null);
 
@@ -163,7 +163,9 @@ test('TEST 10: 1500+ kayıt — toplamlar veritabanında doğru; tahmin/operasyo
   const op = 1000 * 0.469 + 10 * 2.02633 + 5 * 0.00900687;
   assert.ok(Math.abs(s.operational.total_kg - op) < 1e-3, `operasyon ${s.operational.total_kg} vs ${op}`);
   assert.ok(Math.abs(s.event_total.estimated_kg - (s.estimate.participant_estimated_kg + op)) < 1e-3);
-  assert.ok(s.tree_equivalent > 0);
+  assert.ok(s.trees.event_estimated > 0);
+  assert.equal(s.trees.event_estimated, Math.ceil(s.event_total.estimated_kg / 50));
+  assert.ok(s.trees.participants_individual >= s.trees.event_estimated - 1);
 
   // Sayfalama
   const p1 = (await db.query('select public.admin_recent_submissions(25,0) as r')).rows[0].r;
@@ -185,7 +187,7 @@ test('form kapatılınca submit reddedilir; ağaç eşdeğeri ancak onaylıysa g
   await as('authenticated', ADMIN);
   await db.query(`select public.admin_update_settings('{"submissions_open":true,"tree_equivalent_kg":""}')`);
   await as('anon');
-  assert.equal((await submit()).tree_equivalent, null);
+  assert.equal((await submit()).tree_count, null);
 });
 
 test('eski MVP tablosu varsa yedeğe alınır ve kilitlenir', async () => {
@@ -204,4 +206,38 @@ test('eski MVP tablosu varsa yedeğe alınır ve kilitlenir', async () => {
   await d2.exec('set role anon');
   await assert.rejects(d2.query(`insert into public.carbon_submissions_mvp_backup(city,mode,subtype,total_kg) values ('x','y','z',1)`), /permission denied/);
   await d2.close();
+});
+
+test('kullanıcı km girdisi: doğrulanır, kara ulaşımında kullanılır, yaya/uçakta yok sayılır', async () => {
+  await as('anon');
+  const r = await submit({ city: 'Ankara', mode: 'Otobüs', subtype: 'Şehir içi', km: 25 });
+  assert.equal(Number(r.distance_km), 25);
+  assert.equal(r.distance_source, 'user');
+  assert.ok(Math.abs(r.transport_kg - 25 * 2 * 0.10151) < 1e-3);
+  const g = await submit({ city: 'Gaziantep', mode: 'Taksi', subtype: 'Standart', km: 12.34 }); // Gaziantep içi de hesaplanabilir
+  assert.equal(Number(g.distance_km), 12.3);
+  assert.ok(Math.abs(g.transport_kg - 12.3 * 2 * 0.14861) < 1e-3);
+  const walk = await submit({ city: 'Ankara', mode: 'Yaya', subtype: 'Varsayılan', km: 500 });
+  assert.equal(Number(walk.distance_km), 0);
+  assert.equal(walk.distance_source, 'city');
+  const plane = await submit({ city: 'Ankara', mode: 'Uçak', subtype: 'İç hat - ortalama', km: 5 });
+  assert.equal(plane.distance_source, 'city');
+  assert.ok(Number(plane.distance_km) > 400);
+  const none = await submit({ city: 'Ankara', mode: 'Tren', subtype: 'Ulusal demiryolu' });
+  assert.equal(none.distance_source, 'city');
+  await assert.rejects(submit({ mode: 'Otobüs', subtype: 'Şehir içi', km: 3001 }), /invalid_distance/);
+  await assert.rejects(submit({ mode: 'Otobüs', subtype: 'Şehir içi', km: -1 }), /invalid_distance/);
+});
+
+test('dikilecek ağaç sayısı tam sayıdır ve yukarı yuvarlanır', async () => {
+  await as('authenticated', ADMIN);
+  await db.query(`select public.admin_update_settings('{"tree_equivalent_kg":50}')`);
+  await as('anon');
+  const r = await submit({ city: 'Ankara', mode: 'Özel araç', subtype: 'Benzinli', occ: 1 });
+  assert.equal(r.tree_count, Math.ceil(r.total_kg / 50));
+  assert.ok(Number.isInteger(r.tree_count));
+  const zero = await submit({ city: 'Gaziantep', mode: 'Yaya', subtype: 'Varsayılan' });
+  assert.equal(zero.tree_count, 0);
+  await as('authenticated', ADMIN);
+  await db.query(`select public.admin_update_settings('{"tree_equivalent_kg":""}')`);
 });

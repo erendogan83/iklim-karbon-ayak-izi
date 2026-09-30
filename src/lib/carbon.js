@@ -28,11 +28,20 @@ export function getFactor(mode, subtype) {
   return FACTOR_BY_KEY[`${mode}|${subtype}`] ?? null;
 }
 
-export function oneWayDistanceKm(city, mode) {
+export const DISTANCE_LIMITS = { min: 0, max: 3000 };
+
+// Yaya/bisiklet: 0. Uçak: ilden kuş uçuşu. Diğerleri: katılımcı km girdiyse o (0–3000), yoksa ilden karayolu.
+export function oneWayDistanceKm(city, mode, override = null) {
   const c = CITY_BY_NAME.get(city);
   if (!c) throw new CarbonInputError('invalid_city');
   if (mode === 'Yaya' || mode === 'Bisiklet') return 0;
-  return mode === 'Uçak' ? c.airKm : c.roadKm;
+  if (mode === 'Uçak') return c.airKm;
+  if (override !== null && override !== undefined && override !== '') {
+    const n = Number(override);
+    if (!Number.isFinite(n) || n < DISTANCE_LIMITS.min || n > DISTANCE_LIMITS.max) throw new CarbonInputError('invalid_distance');
+    return Math.round(n * 10) / 10;
+  }
+  return c.roadKm;
 }
 
 // Excel "Katılımcı Hesabı" formülünün doğrudan karşılığı (mesafe dışarıdan verilir).
@@ -49,11 +58,12 @@ export function computeEmissions({ mode, subtype, oneWayKm, occupancy = 1, hotel
 }
 
 // Form girdisinden tam sonuç. Sunucu ile aynı sınırları/normalleştirmeyi uygular.
-export function calculate({ city, mode, subtype, occupancy = 1, hotelNights = 0, roomOccupancy = 1 }) {
-  const oneWayKm = oneWayDistanceKm(city, mode);
+export function calculate({ city, mode, subtype, occupancy = 1, hotelNights = 0, roomOccupancy = 1, distanceKm = null }) {
+  const oneWayKm = oneWayDistanceKm(city, mode, distanceKm);
+  const userDistance = distanceKm !== null && distanceKm !== undefined && distanceKm !== '' && mode !== 'Yaya' && mode !== 'Bisiklet' && mode !== 'Uçak';
   const occ = mode === 'Özel araç' ? clampInt(occupancy, LIMITS.occupancy) : 1;
   const nights = clampInt(hotelNights, LIMITS.hotelNights);
   const room = nights > 0 ? clampInt(roomOccupancy, LIMITS.roomOccupancy) : 1;
   const e = computeEmissions({ mode, subtype, oneWayKm, occupancy: occ, hotelNights: nights, roomOccupancy: room });
-  return { city, mode, subtype, distance_km: oneWayKm, occupancy: occ, hotel_nights: nights, room_occupancy: room, ...e };
+  return { city, mode, subtype, distance_km: oneWayKm, distance_source: userDistance ? 'user' : 'city', occupancy: occ, hotel_nights: nights, room_occupancy: room, ...e };
 }

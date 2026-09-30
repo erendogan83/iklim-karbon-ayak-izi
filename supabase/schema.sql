@@ -97,6 +97,9 @@ create table if not exists public.carbon_submissions (
   check (factor_key = mode || '|' || subtype),
   check (abs(total_kg - (transport_kg + accommodation_kg)) < 0.001)
 );
+-- Mesafe kaynağı: 'city' = ilden hesaplanan statik mesafe, 'user' = katılımcının girdiği yaklaşık km (0–3000 doğrulanır).
+alter table public.carbon_submissions add column if not exists distance_source text not null default 'city'
+  check (distance_source in ('city', 'user'));
 create index if not exists carbon_submissions_created_idx on public.carbon_submissions (created_at desc, id desc);
 create index if not exists carbon_submissions_mode_idx on public.carbon_submissions (mode);
 
@@ -148,6 +151,9 @@ $$;
 --      özel araç: toplam_km × faktör / araç_doluluğu ; diğer: toplam_km × faktör
 --      konaklama: gece × 32,1 / oda_doluluğu
 -- ---------------------------------------------------------------------------
+-- Eski imza (7 parametreli) varsa kaldır; aksi halde eski fonksiyon yanında çalışmaya devam ederdi.
+drop function if exists public.submit_carbon(uuid, text, text, text, integer, integer, integer);
+
 create or replace function public.submit_carbon(
   p_session_id uuid,
   p_city text,
@@ -155,7 +161,8 @@ create or replace function public.submit_carbon(
   p_subtype text,
   p_occupancy integer default 1,
   p_hotel_nights integer default 0,
-  p_room_occupancy integer default 1
+  p_room_occupancy integer default 1,
+  p_distance_km numeric default null   -- yalnızca kara ulaşımında: katılımcının yaklaşık tek yön km'si
 )
 returns jsonb
 language plpgsql security definer set search_path = ''
@@ -167,6 +174,7 @@ declare
   v_hotel public.emission_factors%rowtype;
   v_row public.carbon_submissions%rowtype;
   v_km numeric;
+  v_source text := 'city';
   v_occ integer;
   v_nights integer := coalesce(p_hotel_nights, 0);
   v_room integer;
@@ -205,9 +213,19 @@ begin
     v_room := 1;
   end if;
 
-  v_km := case when p_mode in ('Yaya', 'Bisiklet') then 0
-               when p_mode = 'Uçak' then v_city.air_km
-               else v_city.road_km end;
+  -- Yaya/bisiklet 0 km, uçak kuş uçuşu (ilden). Diğerlerinde katılımcı km girdiyse doğrulanıp kullanılır,
+  -- girmediyse ilden hesaplanan karayolu mesafesi kullanılır.
+  if p_mode in ('Yaya', 'Bisiklet') then
+    v_km := 0;
+  elsif p_mode = 'Uçak' then
+    v_km := v_city.air_km;
+  elsif p_distance_km is not null then
+    if p_distance_km < 0 or p_distance_km > 3000 then raise exception 'invalid_distance' using errcode = '22023'; end if;
+    v_km := round(p_distance_km, 1);
+    v_source := 'user';
+  else
+    v_km := v_city.road_km;
+  end if;
 
   v_transport := (v_km * 2) * v_factor.factor / (case when p_mode = 'Özel araç' then v_occ else 1 end);
 
@@ -218,9 +236,9 @@ begin
   v_accom := round(v_accom, 4);
 
   insert into public.carbon_submissions (session_id, city, mode, subtype, factor_key, factor_version,
-    distance_km, occupancy, hotel_nights, room_occupancy, transport_kg, accommodation_kg, total_kg)
+    distance_km, distance_source, occupancy, hotel_nights, room_occupancy, transport_kg, accommodation_kg, total_kg)
   values (p_session_id, v_city.name, p_mode, p_subtype, v_factor.key, v_factor.factor_version,
-    v_km, v_occ, v_nights, v_room, v_transport, v_accom, v_transport + v_accom)
+    v_km, v_source, v_occ, v_nights, v_room, v_transport, v_accom, v_transport + v_accom)
   on conflict (session_id) do nothing
   returning * into v_row;
 
@@ -233,11 +251,12 @@ begin
     'saved', true,
     'duplicate', not v_inserted,
     'city', v_row.city, 'mode', v_row.mode, 'subtype', v_row.subtype,
-    'distance_km', v_row.distance_km,
+    'distance_km', v_row.distance_km, 'distance_source', v_row.distance_source,
     'occupancy', v_row.occupancy, 'hotel_nights', v_row.hotel_nights, 'room_occupancy', v_row.room_occupancy,
     'transport_kg', v_row.transport_kg, 'accommodation_kg', v_row.accommodation_kg, 'total_kg', v_row.total_kg,
-    'tree_equivalent', case when v_settings.tree_equivalent_kg is null then null
-                            else round(v_row.total_kg / v_settings.tree_equivalent_kg, 1) end,
+    -- Dikilecek ağaç sayısı: tam sayı, yukarı yuvarlanır (emisyon > 0 ise en az 1). Katsayı onaylanmadıysa NULL.
+    'tree_count', case when v_settings.tree_equivalent_kg is null then null
+                       else ceil(v_row.total_kg / v_settings.tree_equivalent_kg)::integer end,
     'factor_version', v_row.factor_version
   );
 end;
@@ -327,8 +346,13 @@ begin
       'estimated_kg', round(estimated + op_total, 4)),
     'by_mode', by_mode,
     'by_city', by_city,
-    'tree_equivalent', case when s.tree_equivalent_kg is null then null
-                            else round((estimated + op_total) / s.tree_equivalent_kg, 1) end
+    -- Dikilecek ağaç: katsayı girilmediyse NULL. event_estimated = tahmini etkinlik toplamına göre;
+    -- participants_individual = yanıt verenlerin her birine gösterilen (kişi bazlı yukarı yuvarlanmış) sayıların toplamı.
+    'trees', case when s.tree_equivalent_kg is null then null else jsonb_build_object(
+      'kg_per_tree', s.tree_equivalent_kg,
+      'event_estimated', ceil((estimated + op_total) / s.tree_equivalent_kg),
+      'participants_individual', (select coalesce(sum(ceil(total_kg / s.tree_equivalent_kg)), 0) from public.carbon_submissions)
+    ) end
   );
 end;
 $$;
@@ -399,13 +423,13 @@ $$;
 -- 6) Fonksiyon yetkileri: önce herkesten al, sonra yalnızca gerekenlere ver.
 -- ---------------------------------------------------------------------------
 revoke all on function public.is_admin() from public, anon, authenticated;
-revoke all on function public.submit_carbon(uuid, text, text, text, integer, integer, integer) from public, anon, authenticated;
+revoke all on function public.submit_carbon(uuid, text, text, text, integer, integer, integer, numeric) from public, anon, authenticated;
 revoke all on function public.admin_summary() from public, anon, authenticated;
 revoke all on function public.admin_recent_submissions(integer, integer) from public, anon, authenticated;
 revoke all on function public.admin_update_settings(jsonb) from public, anon, authenticated;
 revoke all on function public.admin_save_operational(jsonb) from public, anon, authenticated;
 
-grant execute on function public.submit_carbon(uuid, text, text, text, integer, integer, integer) to anon, authenticated;
+grant execute on function public.submit_carbon(uuid, text, text, text, integer, integer, integer, numeric) to anon, authenticated;
 grant execute on function public.is_admin() to authenticated;
 grant execute on function public.admin_summary() to authenticated;
 grant execute on function public.admin_recent_submissions(integer, integer) to authenticated;

@@ -110,3 +110,17 @@ test('Faktör tablosu Excel değerleriyle aynı', () => {
   };
   assert.deepEqual(by, expected);
 });
+
+test('Kullanıcı km girdisi: mesafeyi ezer, sınır dışı reddedilir', () => {
+  const r = calculate({ city: 'Ankara', mode: 'Otobüs', subtype: 'Şehir içi', distanceKm: 25 });
+  assert.equal(r.distance_km, 25);
+  assert.equal(r.distance_source, 'user');
+  close(r.transport_kg, 25 * 2 * 0.10151);
+  const g = calculate({ city: 'Gaziantep', mode: 'Taksi', subtype: 'Standart', distanceKm: 12.34 });
+  assert.equal(g.distance_km, 12.3);
+  assert.equal(calculate({ city: 'Ankara', mode: 'Yaya', subtype: 'Varsayılan', distanceKm: 500 }).distance_km, 0);
+  assert.equal(calculate({ city: 'Ankara', mode: 'Uçak', subtype: 'İç hat - ortalama', distanceKm: 5 }).distance_source, 'city');
+  assert.throws(() => calculate({ city: 'Ankara', mode: 'Tren', subtype: 'Ulusal demiryolu', distanceKm: 3001 }), CarbonInputError);
+  assert.throws(() => calculate({ city: 'Ankara', mode: 'Tren', subtype: 'Ulusal demiryolu', distanceKm: -1 }), CarbonInputError);
+  assert.equal(calculate({ city: 'Ankara', mode: 'Tren', subtype: 'Ulusal demiryolu' }).distance_source, 'city');
+});

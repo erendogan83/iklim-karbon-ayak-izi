@@ -22,6 +22,10 @@ Faktörler tek yerde: [src/data/factors.js](src/data/factors.js) (kaynak: UK GHG
 
 **Excel'den tek bilinçli sapma:** yanıt sayısı hedef katılımcıyı aşarsa tahmini değer, ölçülenin altına indirilmez (ölçülen = tahmini) ve panelde uyarı çıkar.
 
+**Mesafe:** Kara ulaşımında (özel araç, otobüs, servis, tren, tramvay/metro, taksi, motosiklet) katılımcıya "yaklaşık kaç km yol kat ettiniz?" sorulur; ilden hesaplanan statik mesafe öneri olarak dolu gelir, katılımcı değiştirebilir (0–3000 km, sunucuda doğrulanır; kayıtta `distance_source` = `user`/`city`). Gaziantep'ten gelenlerde öneri yoktur, km yazılır. Yaya/bisiklet 0 km, uçak ilden kuş uçuşudur.
+
+**Dikilecek ağaç:** Admin panelinde "1 ağaç eşdeğeri (kg CO₂e)" girildiğinde katılımcı sonuç ekranında animasyonlu olarak "karbon ayak izinize karşılık N ağaç dikilecek" görür (N = ⌈kişisel emisyon / katsayı⌉). Panel toplam dikilecek ağaç sayısını gösterir. Katsayıyı organizatör belirler; boşsa ağaç gösterilmez.
+
 Arayüzde uçak için yalnızca "İç hat - ortalama" sunulur (etkinlik Türkiye içinde); sunucu Excel'deki 7 uçuş sınıfının hepsini kabul eder.
 
 ### Mesafeler
@@ -78,4 +82,4 @@ npm run build
 ## Yapılmayanlar / sonraya bırakılanlar
 - Gıda faktörleri (Excel'de var): katılımcı formunda yemek sorusu olmadığı için kullanılmıyor; gerekirse admin tarafına menü/öğün sayısı girdisi eklenir.
 - XLSX/PDF rapor (CSV hazır).
-- Ağaç eşdeğeri katsayısı organizatörden onay bekliyor: panelden girilene kadar katılımcıya gösterilmez.
+- Ağaç katsayısı organizatörce belirlenip panelden girilmelidir (girilene kadar ağaç gösterilmez).

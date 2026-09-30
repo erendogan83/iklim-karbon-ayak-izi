@@ -16,7 +16,7 @@ export class SubmitError extends Error {
 
 const TIMEOUT_MS = 12000;
 
-export async function submitCarbon(sessionId, { city, mode, subtype, occupancy, hotelNights, roomOccupancy }) {
+export async function submitCarbon(sessionId, { city, mode, subtype, occupancy, hotelNights, roomOccupancy, distanceKm }) {
   const { supabase } = await import('./supabase.js');
   if (!supabase) throw new SubmitError('not_configured');
   const ctrl = new AbortController();
@@ -26,6 +26,7 @@ export async function submitCarbon(sessionId, { city, mode, subtype, occupancy, 
       .rpc('submit_carbon', {
         p_session_id: sessionId, p_city: city, p_mode: mode, p_subtype: subtype,
         p_occupancy: occupancy, p_hotel_nights: hotelNights, p_room_occupancy: roomOccupancy,
+        p_distance_km: distanceKm ?? null,
       })
       .abortSignal(ctrl.signal);
     if (error) throw new SubmitError(/submissions_closed/.test(error.message) ? 'submissions_closed' : 'rejected', error);
