@@ -108,7 +108,7 @@ export default function Result({ headingRef, values, trees, status, message, onR
               <img src="/gaski-logo.jpg" alt="GASKİ – Gaziantep Su ve Kanalizasyon İdaresi" width="104" height="104" decoding="async" />
               <p>
                 Üretmiş olduğunuz karbon ayak izinizi karşılamak amacıyla {EVENT_CONFIG.planter} tarafından{' '}
-                <b>{trees.toLocaleString('tr-TR')} adet {EVENT_CONFIG.treeName}</b> {EVENT_CONFIG.plantingDate} tarihinde dikilecektir.
+                <b>{trees.toLocaleString('tr-TR')} adet {EVENT_CONFIG.treeName} 11 Kasım Millî Ağaçlandırma Günü </b> adınıza dikilecektir.
               </p>
             </div>
             <small className="grove-note">Fide sayısı yaklaşık bir hesaba dayanır.</small>
